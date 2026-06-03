@@ -1,4 +1,5 @@
-# src/stokes.py
+# src/polarization_tools.py
+
 import numpy as np
 
 def normalize_stokes(S):
