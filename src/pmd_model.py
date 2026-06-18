@@ -181,7 +181,8 @@ def extract_pmd_vector(
 
     tau = np.array(
         [1j * np.trace(Omega @ PAULI[k]) for k in range(3)],
-        dtype=float,
-    )
+        dtype=complex,
+    ).real
+    
     dgd = np.linalg.norm(tau)
     return tau, dgd
