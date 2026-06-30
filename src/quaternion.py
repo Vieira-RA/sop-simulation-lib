@@ -73,3 +73,32 @@ def regularize_signs(Q: np.ndarray) -> np.ndarray:
         if np.dot(Q_reg[i - 1], Q_reg[i]) < 0:
             Q_reg[i] = -Q_reg[i]
     return Q_reg
+
+def quaternion_to_rotation_vector(q: np.ndarray, eps: float = 1e-12) -> np.ndarray:
+    """
+    Convert a unit quaternion to the rotation vector φ.
+
+    U = exp(-i/2 φ·σ)  ↔  q0 = cos(φ/2),  q_vec = (φ/φ) sin(φ/2).
+
+    Parameters
+    ----------
+    q : (4,) float ndarray
+        (q0, q1, q2, q3)
+    eps : float
+        Tolerance for small‑angle approximation.
+
+    Returns
+    -------
+    phi : (3,) float ndarray
+        Rotation vector (radians).
+    """
+    q0 = np.clip(q[0], -1.0, 1.0)
+    q_vec = q[1:]
+    norm_q_vec = np.linalg.norm(q_vec)
+
+    if 1.0 - q0**2 < eps:
+        # small rotation angle: φ ≈ 2 q_vec
+        return 2.0 * q_vec
+    else:
+        phi_mag = 2.0 * np.arccos(q0)
+        return phi_mag * q_vec / norm_q_vec
