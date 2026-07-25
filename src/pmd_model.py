@@ -1,7 +1,6 @@
 """Generate random birefringence profiles using the wave‑plate model."""
 
 import numpy as np
-from fiber_propagation import propagate_unitary
 
 def extract_pmd_vector(
     U1: np.ndarray,

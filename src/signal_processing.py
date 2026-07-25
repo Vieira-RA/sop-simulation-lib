@@ -1,7 +1,87 @@
-"""Functions for generating digital communication signals."""
+"""
+Functions for generating digital communication signals and
+general signal processing routines (FFT, cross‑correlation, peak fitting).
+"""
 
 import numpy as np
 from scipy.signal import upfirdn
+
+def cross_correlation_2d_fft(sig1, sig2, normalize=True):
+    """
+    Combined cross‑correlation of two 2D vector time series using the FFT.
+
+    The correlation is the sum of the per‑component cross‑correlations,
+    equivalent to the dot‑product correlation at every lag.
+
+    Parameters
+    ----------
+    sig1, sig2 : ndarray, shape (N, 2)
+        Real 2D vector signals. Each row is one time sample.
+    normalize : bool
+        If True, normalise by the geometric mean of the signal energies.
+
+    Returns
+    -------
+    lags : ndarray
+        Lag indices (in samples) from -(len(sig2)-1) to (len(sig1)-1).
+    corr : ndarray
+        Correlation values for each lag.
+    """
+    a_x, a_y = sig1[:, 0], sig1[:, 1]
+    b_x, b_y = sig2[:, 0], sig2[:, 1]
+
+    N = len(a_x) + len(b_x) - 1
+    A_x = np.fft.fft(a_x, n=N)
+    A_y = np.fft.fft(a_y, n=N)
+    B_x = np.fft.fft(b_x, n=N)
+    B_y = np.fft.fft(b_y, n=N)
+
+    corr_x = np.fft.ifft(A_x * np.conj(B_x)).real
+    corr_y = np.fft.ifft(A_y * np.conj(B_y)).real
+    corr = corr_x + corr_y
+
+    if normalize:
+        ener1 = np.sum(a_x**2 + a_y**2)
+        ener2 = np.sum(b_x**2 + b_y**2)
+        corr = corr / np.sqrt(ener1 * ener2)
+
+    corr = np.fft.fftshift(corr)
+    lags = np.arange(-len(b_x) + 1, len(a_x))
+    return lags, corr
+
+
+def parabolic_fit(y, peak_idx):
+    """
+    Subsample peak interpolation using a parabolic fit through three points.
+
+    Parameters
+    ----------
+    y : ndarray, 1D
+        Correlation function (e.g., absolute value of cross‑correlation).
+    peak_idx : int
+        Index of the maximum in `y`.
+
+    Returns
+    -------
+    delta : float
+        Fractional offset (in samples) from `peak_idx`.
+    peak_val : float
+        Interpolated peak value.
+    """
+    if peak_idx == 0 or peak_idx == len(y) - 1:
+        return 0.0, y[peak_idx]
+
+    y_left = y[peak_idx - 1]
+    y_center = y[peak_idx]
+    y_right = y[peak_idx + 1]
+
+    denom = y_left - 2 * y_center + y_right
+    if abs(denom) < 1e-15:
+        return 0.0, y_center
+
+    delta = (y_left - y_right) / (2 * denom)
+    peak_val = y_center - (y_left - y_right) * delta / 4
+    return delta, peak_val
 
 def generate_dp_qpsk(
     n_symbols: int,
