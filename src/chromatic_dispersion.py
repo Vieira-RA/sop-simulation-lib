@@ -232,7 +232,7 @@ def fractional_delay_fft(
 
     spectrum = np.fft.fft(signal)
 
-    phase = np.exp(-1j * 2 * np.pi * freq * delay)
+    phase = np.exp(1j * 2 * np.pi * freq * delay)
 
     delayed = np.fft.ifft(spectrum * phase)
 
