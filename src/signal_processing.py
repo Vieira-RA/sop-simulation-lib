@@ -38,7 +38,7 @@ def cross_correlation_2d_fft(sig1, sig2, normalize=True):
 
     corr_x = np.fft.ifft(A_x * np.conj(B_x)).real
     corr_y = np.fft.ifft(A_y * np.conj(B_y)).real
-    corr = corr_x + corr_y
+    corr = np.abs(corr_x) + np.abs(corr_y)
 
     if normalize:
         ener1 = np.sum(a_x**2 + a_y**2)
@@ -82,6 +82,70 @@ def parabolic_fit(y, peak_idx):
     delta = (y_left - y_right) / (2 * denom)
     peak_val = y_center - (y_left - y_right) * delta / 4
     return delta, peak_val
+
+
+def phase_slope_delay_2d(sig1, sig2, dt, weighted=True):
+    """
+    Estimate time delay between two 2‑D vector signals using the
+    frequency‑domain phase‑slope of the combined cross‑spectrum.
+
+    Parameters
+    ----------
+    sig1, sig2 : ndarray, shape (N, 2)
+        Real 2‑D signals.
+    dt : float
+        Sampling interval (seconds).
+    weighted : bool
+        If True, use magnitude‑weighted least squares (no threshold).
+        If False, use a 5 % magnitude mask (legacy behaviour).
+
+    Returns
+    -------
+    delay : float
+        Estimated delay in seconds.
+    """
+    F1_x = np.fft.fft(sig1[:, 0])
+    F1_y = np.fft.fft(sig1[:, 1])
+    F2_x = np.fft.fft(sig2[:, 0])
+    F2_y = np.fft.fft(sig2[:, 1])
+
+    Phi = F1_x * np.conj(F2_x) + F1_y * np.conj(F2_y)
+
+    n = len(sig1)
+    freq = np.fft.fftfreq(n, d=dt)
+    pos = freq > 0
+    freq_pos = freq[pos]
+    Phi_pos = Phi[pos]
+    mag = np.abs(Phi_pos)
+
+    if weighted:
+        # Use all positive frequencies with magnitude as weight
+        # (excluding bins with zero weight to avoid numerical issues)
+        mask = mag > 0
+        freq_used = freq_pos[mask]
+        phase = np.unwrap(np.angle(Phi_pos[mask]))
+        W = mag[mask]
+        A = np.vstack([freq_used, np.ones_like(freq_used)]).T
+        # Weighted least squares: solve  W*A*x = W*phase
+        WA = W[:, None] * A
+        Wphase = W * phase
+        coeff, _, _, _ = np.linalg.lstsq(WA, Wphase, rcond=None)
+        slope = coeff[0]
+    else:
+        # Legacy: 5 % magnitude threshold
+        threshold = 0.05 * np.max(mag)
+        mask = mag > threshold
+        if np.sum(mask) < 2:
+            return 0.0
+        freq_used = freq_pos[mask]
+        phase = np.unwrap(np.angle(Phi_pos[mask]))
+        A = np.vstack([freq_used, np.ones_like(freq_used)]).T
+        coeff, _, _, _ = np.linalg.lstsq(A, phase, rcond=None)
+        slope = coeff[0]
+
+    delay = -slope / (2 * np.pi)
+    return delay
+        
 
 def generate_dp_qpsk(
     n_symbols: int,
