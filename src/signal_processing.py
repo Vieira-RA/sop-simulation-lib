@@ -49,7 +49,6 @@ def cross_correlation_2d_fft(sig1, sig2, normalize=True):
     lags = np.arange(-len(b_x) + 1, len(a_x))
     return lags, corr
 
-
 def parabolic_fit(y, peak_idx):
     """
     Subsample peak interpolation using a parabolic fit through three points.
@@ -82,7 +81,6 @@ def parabolic_fit(y, peak_idx):
     delta = (y_left - y_right) / (2 * denom)
     peak_val = y_center - (y_left - y_right) * delta / 4
     return delta, peak_val
-
 
 def phase_slope_delay_2d(sig1, sig2, dt, weighted=True):
     """
@@ -146,6 +144,80 @@ def phase_slope_delay_2d(sig1, sig2, dt, weighted=True):
     delay = -slope / (2 * np.pi)
     return delay
         
+def gcc_phat_2d(sig1, sig2, dt, f_max):
+    """
+    Estimate time delay between two 2‑D vector signals using the
+    GCC‑PHAT (Phase Transform) with a bandwidth‑restricted mask.
+
+    Parameters
+    ----------
+    sig1, sig2 : ndarray, shape (N, 2)
+        Real 2‑D signals.
+    dt : float
+        Sampling interval (seconds).
+    f_max : float
+        Maximum frequency (Hz) retained in the PHAT filter.
+        Frequencies beyond |f| < f_max are set to zero to avoid
+        noise amplification.
+
+    Returns
+    -------
+    delay : float
+        Estimated delay in seconds.
+    """
+    import numpy as np
+
+    N = len(sig1)
+    N_corr = 2 * N - 1                     # linear correlation length
+
+    # Zero‑padded FFTs
+    F1_x = np.fft.fft(sig1[:, 0], n=N_corr)
+    F1_y = np.fft.fft(sig1[:, 1], n=N_corr)
+    F2_x = np.fft.fft(sig2[:, 0], n=N_corr)
+    F2_y = np.fft.fft(sig2[:, 1], n=N_corr)
+
+    # Combined cross‑spectrum (same as used for 2‑D dot‑product correlation)
+    Phi = F1_x * np.conj(F2_x) + F1_y * np.conj(F2_y)
+
+    # Frequency axis for the zero‑padded length
+    freq = np.fft.fftfreq(N_corr, d=dt)
+
+    # Bandwidth‑restricted mask: keep only frequencies where |f| < f_max
+    band_mask = np.abs(freq) < f_max
+
+    # PHAT whitening only inside the signal band
+    Phi_phat = np.zeros_like(Phi, dtype=complex)
+    eps = 1e-6
+    Phi_phat[band_mask] = Phi[band_mask] / (np.abs(Phi[band_mask]) + eps)
+
+    # Inverse FFT → correlation function
+    r_raw = np.fft.ifft(Phi_phat).real
+    r = np.fft.fftshift(r_raw)            # zero lag at centre
+
+    # Lag axis (in samples)
+    lags = np.arange(-(N - 1), N)         # length N_corr
+
+    # Integer peak
+    abs_r = np.abs(r)
+    peak_idx = np.argmax(abs_r)
+    integer_lag = lags[peak_idx]
+
+    # Parabolic sub‑sample refinement
+    if 0 < peak_idx < len(abs_r) - 1:
+        y_left = abs_r[peak_idx - 1]
+        y_center = abs_r[peak_idx]
+        y_right = abs_r[peak_idx + 1]
+        denom = y_left - 2 * y_center + y_right
+        if abs(denom) > 1e-15:
+            delta = (y_left - y_right) / (2 * denom)
+        else:
+            delta = 0.0
+    else:
+        delta = 0.0
+
+    sub_lag = integer_lag + delta
+    delay = sub_lag * dt
+    return delay
 
 def generate_dp_qpsk(
     n_symbols: int,
@@ -211,7 +283,6 @@ def generate_dp_qpsk(
     t = np.arange(len(sig_x)) * dt
 
     return t, sig_x, sig_y
-
 
 def _rrc_filter(
     baud_rate: float,
