@@ -144,10 +144,10 @@ def phase_slope_delay_2d(sig1, sig2, dt, weighted=True):
     delay = -slope / (2 * np.pi)
     return delay
         
-def gcc_phat_2d(sig1, sig2, dt, f_max):
+def gcc_phat_2d(sig1, sig2, dt, f_max, mag_threshold=0.05):
     """
-    Estimate time delay between two 2‑D vector signals using the
-    GCC‑PHAT (Phase Transform) with a bandwidth‑restricted mask.
+    Estimate time delay between two 2‑D vector signals using GCC‑PHAT
+    with a combined bandwidth and magnitude threshold.
 
     Parameters
     ----------
@@ -157,8 +157,9 @@ def gcc_phat_2d(sig1, sig2, dt, f_max):
         Sampling interval (seconds).
     f_max : float
         Maximum frequency (Hz) retained in the PHAT filter.
-        Frequencies beyond |f| < f_max are set to zero to avoid
-        noise amplification.
+    mag_threshold : float, optional
+        Relative magnitude threshold (0 < mag_threshold < 1).
+        Bins with |Phi| < mag_threshold * max(|Phi|) inside the band are excluded.
 
     Returns
     -------
@@ -168,7 +169,7 @@ def gcc_phat_2d(sig1, sig2, dt, f_max):
     import numpy as np
 
     N = len(sig1)
-    N_corr = 2 * N - 1                     # linear correlation length
+    N_corr = 2 * N - 1
 
     # Zero‑padded FFTs
     F1_x = np.fft.fft(sig1[:, 0], n=N_corr)
@@ -176,33 +177,41 @@ def gcc_phat_2d(sig1, sig2, dt, f_max):
     F2_x = np.fft.fft(sig2[:, 0], n=N_corr)
     F2_y = np.fft.fft(sig2[:, 1], n=N_corr)
 
-    # Combined cross‑spectrum (same as used for 2‑D dot‑product correlation)
+    # Combined cross‑spectrum
     Phi = F1_x * np.conj(F2_x) + F1_y * np.conj(F2_y)
 
-    # Frequency axis for the zero‑padded length
+    # Frequency axis
     freq = np.fft.fftfreq(N_corr, d=dt)
 
-    # Bandwidth‑restricted mask: keep only frequencies where |f| < f_max
+    # Bandwidth mask
     band_mask = np.abs(freq) < f_max
 
-    # PHAT whitening only inside the signal band
+    # Magnitude threshold within the band
+    mag = np.abs(Phi)
+    # Find the maximum magnitude inside the band (avoid division by zero)
+    peak_mag = np.max(mag[band_mask]) if np.any(band_mask) else 0.0
+    if peak_mag < 1e-15:
+        return 0.0
+
+    # Combined mask: both bandwidth and magnitude criteria
+    strong_mask = band_mask & (mag > mag_threshold * peak_mag)
+
+    # PHAT whitening only on the selected bins
     Phi_phat = np.zeros_like(Phi, dtype=complex)
     eps = 1e-6
-    Phi_phat[band_mask] = Phi[band_mask] / (np.abs(Phi[band_mask]) + eps)
+    Phi_phat[strong_mask] = Phi[strong_mask] / (mag[strong_mask] + eps)
 
     # Inverse FFT → correlation function
     r_raw = np.fft.ifft(Phi_phat).real
-    r = np.fft.fftshift(r_raw)            # zero lag at centre
+    r = np.fft.fftshift(r_raw)
+    lags = np.arange(-(N - 1), N)
 
-    # Lag axis (in samples)
-    lags = np.arange(-(N - 1), N)         # length N_corr
-
-    # Integer peak
+    # Peak detection
     abs_r = np.abs(r)
     peak_idx = np.argmax(abs_r)
     integer_lag = lags[peak_idx]
 
-    # Parabolic sub‑sample refinement
+    # Parabolic refinement (same as before)
     if 0 < peak_idx < len(abs_r) - 1:
         y_left = abs_r[peak_idx - 1]
         y_center = abs_r[peak_idx]
@@ -218,7 +227,7 @@ def gcc_phat_2d(sig1, sig2, dt, f_max):
     sub_lag = integer_lag + delta
     delay = sub_lag * dt
     return delay
-
+    
 def generate_dp_qpsk(
     n_symbols: int,
     baud_rate: float,
