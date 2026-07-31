@@ -325,3 +325,52 @@ def _rrc_filter(
 
     h /= np.sqrt(np.sum(h**2))  # energy normalisation
     return t, h
+
+def parabolic_corr_delay_2d(sig1, sig2, dt):
+    """
+    Estimate time delay between two 2‑D vector signals using the
+    2‑D real cross‑correlation peak refined with three‑point parabolic
+    interpolation.
+
+    Parameters
+    ----------
+    sig1, sig2 : ndarray, shape (N, 2)
+        Real 2‑D signals.
+    dt : float
+        Sampling interval (seconds).
+
+    Returns
+    -------
+    delay : float
+        Estimated delay in seconds (positive if sig2 is delayed relative to sig1).
+    """
+    lags, corr = cross_correlation_2d_fft(sig1, sig2, normalize=True)
+    abs_corr = np.abs(corr)
+    peak_idx = np.argmax(abs_corr)
+    delta, _ = parabolic_fit(abs_corr, peak_idx)
+    lag_samples = lags[peak_idx] + delta
+    return lag_samples * dt
+
+
+def integer_corr_delay_2d(sig1, sig2, dt):
+    """
+    Estimate time delay between two 2‑D vector signals using the
+    integer sample peak of the 2‑D real cross‑correlation (no sub‑sample
+    refinement).
+
+    Parameters
+    ----------
+    sig1, sig2 : ndarray, shape (N, 2)
+        Real 2‑D signals.
+    dt : float
+        Sampling interval (seconds).
+
+    Returns
+    -------
+    delay : float
+        Estimated delay in seconds (positive if sig2 is delayed relative to sig1).
+    """
+    lags, corr = cross_correlation_2d_fft(sig1, sig2, normalize=True)
+    abs_corr = np.abs(corr)
+    peak_idx = np.argmax(abs_corr)
+    return lags[peak_idx] * dt
