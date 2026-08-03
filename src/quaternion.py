@@ -1,8 +1,6 @@
 """Quaternion representation of SU(2) Jones matrices and sign regularization."""
 
 import numpy as np
-from numpy.linalg import norm
-
 
 def jones_to_quaternion(U: np.ndarray) -> np.ndarray:
     """
@@ -25,7 +23,7 @@ def jones_to_quaternion(U: np.ndarray) -> np.ndarray:
     q2 = -np.imag(β)
     q3 = -np.real(β)
     q = np.array([q0, q1, q2, q3])
-    return q / norm(q)  # ensure unit norm despite numerical errors
+    return q / np.linalg.norm(q)   # ensure unit norm despite numerical errors
 
 
 def quaternion_to_jones(q: np.ndarray) -> np.ndarray:
@@ -73,6 +71,7 @@ def regularize_signs(Q: np.ndarray) -> np.ndarray:
         if np.dot(Q_reg[i - 1], Q_reg[i]) < 0:
             Q_reg[i] = -Q_reg[i]
     return Q_reg
+
 
 def quaternion_to_rotation_vector(q: np.ndarray, eps: float = 1e-12) -> np.ndarray:
     """
