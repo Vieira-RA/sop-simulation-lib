@@ -374,3 +374,170 @@ def integer_corr_delay_2d(sig1, sig2, dt):
     abs_corr = np.abs(corr)
     peak_idx = np.argmax(abs_corr)
     return lags[peak_idx] * dt
+
+# ===================== 1‑D (scalar) cross‑correlation =====================
+def cross_correlation_1d_fft(sig1, sig2, normalize=True):
+    """
+    Compute the real cross‑correlation of two 1‑D signals using FFT.
+
+    Parameters
+    ----------
+    sig1, sig2 : ndarray, 1‑D
+    normalize : bool
+        If True, divide by sqrt(E1 * E2).
+
+    Returns
+    -------
+    lags : ndarray (samples), corr : ndarray (same length)
+    """
+    N = len(sig1) + len(sig2) - 1
+    F1 = np.fft.fft(sig1, n=N)
+    F2 = np.fft.fft(sig2, n=N)
+    corr_raw = np.fft.ifft(F1 * np.conj(F2)).real
+    corr = np.fft.fftshift(corr_raw)
+    lags = np.arange(-len(sig2) + 1, len(sig1))
+    if normalize:
+        ener1 = np.sum(sig1**2)
+        ener2 = np.sum(sig2**2)
+        corr = corr / np.sqrt(ener1 * ener2)
+    return lags, corr
+
+
+def phase_slope_delay_1d(sig1, sig2, dt, weighted=True):
+    """
+    Delay estimate from 1‑D signals using frequency‑domain phase‑slope.
+
+    Parameters
+    ----------
+    sig1, sig2 : ndarray, 1‑D
+    dt : float
+    weighted : bool
+        If True, use magnitude‑weighted least squares.
+
+    Returns
+    -------
+    delay : float (seconds)
+    """
+    n = len(sig1)
+    F1 = np.fft.fft(sig1)
+    F2 = np.fft.fft(sig2)
+    Phi = F1 * np.conj(F2)
+
+    freq = np.fft.fftfreq(n, d=dt)
+    pos = freq > 0
+    freq_pos = freq[pos]
+    Phi_pos = Phi[pos]
+    mag = np.abs(Phi_pos)
+
+    if weighted:
+        mask = mag > 0
+        freq_used = freq_pos[mask]
+        phase = np.unwrap(np.angle(Phi_pos[mask]))
+        W = mag[mask]
+        A = np.vstack([freq_used, np.ones_like(freq_used)]).T
+        WA = W[:, None] * A
+        Wphase = W * phase
+        coeff, _, _, _ = np.linalg.lstsq(WA, Wphase, rcond=None)
+        slope = coeff[0]
+    else:
+        threshold = 0.05 * np.max(mag)
+        mask = mag > threshold
+        if np.sum(mask) < 2:
+            return 0.0
+        freq_used = freq_pos[mask]
+        phase = np.unwrap(np.angle(Phi_pos[mask]))
+        A = np.vstack([freq_used, np.ones_like(freq_used)]).T
+        coeff, _, _, _ = np.linalg.lstsq(A, phase, rcond=None)
+        slope = coeff[0]
+
+    delay = -slope / (2 * np.pi)
+    return delay
+
+
+def gcc_phat_1d(sig1, sig2, dt, f_max, mag_threshold=0.05):
+    """
+    1‑D GCC‑PHAT delay estimator with bandwidth mask.
+
+    Parameters
+    ----------
+    sig1, sig2 : ndarray, 1‑D
+    dt : float
+    f_max : float
+        Frequency mask limit (Hz).
+    mag_threshold : float
+        Relative magnitude threshold inside the band.
+
+    Returns
+    -------
+    delay : float (seconds)
+    """
+    N = len(sig1)
+    N_corr = 2 * N - 1
+    F1 = np.fft.fft(sig1, n=N_corr)
+    F2 = np.fft.fft(sig2, n=N_corr)
+    Phi = F1 * np.conj(F2)
+
+    freq = np.fft.fftfreq(N_corr, d=dt)
+    band_mask = np.abs(freq) < f_max
+    mag = np.abs(Phi)
+    peak_mag = np.max(mag[band_mask]) if np.any(band_mask) else 0.0
+    if peak_mag < 1e-15:
+        return 0.0
+    strong_mask = band_mask & (mag > mag_threshold * peak_mag)
+
+    Phi_phat = np.zeros_like(Phi, dtype=complex)
+    eps = 1e-6
+    Phi_phat[strong_mask] = Phi[strong_mask] / (mag[strong_mask] + eps)
+
+    r_raw = np.fft.ifft(Phi_phat).real
+    r = np.fft.fftshift(r_raw)
+    lags = np.arange(-(N - 1), N)
+    abs_r = np.abs(r)
+    peak_idx = np.argmax(abs_r)
+    integer_lag = lags[peak_idx]
+
+    # parabolic refinement
+    if 0 < peak_idx < len(abs_r) - 1:
+        y_left = abs_r[peak_idx - 1]
+        y_center = abs_r[peak_idx]
+        y_right = abs_r[peak_idx + 1]
+        denom = y_left - 2 * y_center + y_right
+        if abs(denom) > 1e-15:
+            delta = (y_left - y_right) / (2 * denom)
+        else:
+            delta = 0.0
+    else:
+        delta = 0.0
+    sub_lag = integer_lag + delta
+    return sub_lag * dt
+
+
+def integer_corr_delay_1d(sig1, sig2, dt):
+    """
+    Delay from integer sample peak of 1‑D cross‑correlation.
+    """
+    lags, corr = cross_correlation_1d_fft(sig1, sig2, normalize=True)
+    peak_idx = np.argmax(np.abs(corr))
+    return lags[peak_idx] * dt
+
+
+def parabolic_corr_delay_1d(sig1, sig2, dt):
+    """
+    Delay from parabolic‑refined peak of 1‑D cross‑correlation.
+    """
+    lags, corr = cross_correlation_1d_fft(sig1, sig2, normalize=True)
+    abs_corr = np.abs(corr)
+    peak_idx = np.argmax(abs_corr)
+    if 0 < peak_idx < len(abs_corr) - 1:
+        y_left = abs_corr[peak_idx - 1]
+        y_center = abs_corr[peak_idx]
+        y_right = abs_corr[peak_idx + 1]
+        denom = y_left - 2 * y_center + y_right
+        if abs(denom) > 1e-15:
+            delta = (y_left - y_right) / (2 * denom)
+        else:
+            delta = 0.0
+    else:
+        delta = 0.0
+    lag_samples = lags[peak_idx] + delta
+    return lag_samples * dt

@@ -19,11 +19,11 @@ def jones_to_quaternion(U: np.ndarray) -> np.ndarray:
     α = U[0, 0]
     β = U[0, 1]
     q0 = np.real(α)
-    q1 = -np.imag(α)
-    q2 = -np.imag(β)
-    q3 = -np.real(β)
+    q1 = -np.imag(β)
+    q2 = -np.real(β)
+    q3 = -np.imag(α)
     q = np.array([q0, q1, q2, q3])
-    return q / np.linalg.norm(q)   # ensure unit norm despite numerical errors
+    return q / np.linalg.norm(q)
 
 
 def quaternion_to_jones(q: np.ndarray) -> np.ndarray:
@@ -101,3 +101,29 @@ def quaternion_to_rotation_vector(q: np.ndarray, eps: float = 1e-12) -> np.ndarr
     else:
         phi_mag = 2.0 * np.arccos(q0)
         return phi_mag * q_vec / norm_q_vec
+
+def quaternion_rotate_stokes(Q: np.ndarray, s_in: np.ndarray) -> np.ndarray:
+    """
+    Rotate a fixed Stokes vector s_in by a sequence of unit quaternions Q.
+
+    Parameters
+    ----------
+    Q : (N, 4) float ndarray
+        Unit quaternions (q0, q1, q2, q3).  Assumed to be normalised.
+    s_in : (3,) float ndarray
+        Input Stokes vector (S1, S2, S3) to be rotated.
+
+    Returns
+    -------
+    S_out : (N, 3) float ndarray
+        Rotated Stokes vectors corresponding to each quaternion.
+    """
+    q0 = Q[:, 0]                # scalar part (N,)
+    q_vec = Q[:, 1:]            # vector part (N, 3)
+
+    # Rodrigues formula for rotation by a unit quaternion:
+    #   v_rot = v + 2 * q_vec × (q_vec × v + q0 * v)
+    #   where × denotes the cross product.
+    t = np.cross(q_vec, s_in)                              # (N, 3)
+    v_rot = s_in + 2.0 * np.cross(q_vec, t + q0[:, None] * s_in)
+    return v_rot
