@@ -137,25 +137,22 @@ def generate_pmd_waveplates(
     beta0 = np.zeros((3, n_points))
     beta_prime = np.zeros((3, n_points))
 
-    for seg in range(n_segments):
-        # Random unit vector for β₀ direction
-        n_hat = rng.normal(size=3)
-        n_hat /= np.linalg.norm(n_hat)
-        beta0_seg = beta_mag * n_hat
+    # Draw all segment values in one shot.  Row-major order gives the same
+    # sequence as the original per-segment loop, so results are bit-identical
+    # for a given seed.  6 standard-normal draws per segment: 3 for the beta0
+    # direction, 3 for beta' (scaled by sigma_beta_prime below).
+    draws = rng.normal(size=(n_segments, 6))
+    n_hat = draws[:, :3]
+    n_hat /= np.linalg.norm(n_hat, axis=1, keepdims=True)
+    beta0_seg = beta_mag * n_hat                       # (n_segments, 3)
+    beta_prime_seg = draws[:, 3:] * sigma_beta_prime   # (n_segments, 3)
 
-        # Random vector for β′ (each component independent Gaussian)
-        beta_prime_seg = rng.normal(scale=sigma_beta_prime, size=3)
-
-        # Indices belonging to this segment
-        seg_start = seg * L_seg
-        seg_end = (seg + 1) * L_seg
-        mask = (z >= seg_start) & (z < seg_end)
-        # Handle the last point exactly at L
-        if seg == n_segments - 1:
-            mask |= (z == L)
-
-        beta0[:, mask] = beta0_seg[:, np.newaxis]
-        beta_prime[:, mask] = beta_prime_seg[:, np.newaxis]
+    # Each segment occupies exactly one z point (its left edge, since dz==L_seg);
+    # the final point z==L belongs to the last segment.
+    beta0[:, :-1] = beta0_seg.T
+    beta0[:, -1] = beta0_seg[-1]
+    beta_prime[:, :-1] = beta_prime_seg.T
+    beta_prime[:, -1] = beta_prime_seg[-1]
 
     return z, beta0, beta_prime, L_seg
 
