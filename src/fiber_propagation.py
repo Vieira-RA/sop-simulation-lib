@@ -1,5 +1,7 @@
 """Fibre propagation models for Jones and Stokes calculus."""
 
+from __future__ import annotations
+
 import numpy as np
 
 # Pauli matrices

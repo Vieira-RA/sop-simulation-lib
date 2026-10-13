@@ -8,6 +8,8 @@ This module implements a continuous random birefringence profile:
     γ₀² / (3·Δz), consistent with the Shtaif–Mecozzi continuous model.
 """
 
+from __future__ import annotations
+
 import numpy as np
 
 

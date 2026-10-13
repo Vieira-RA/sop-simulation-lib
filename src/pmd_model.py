@@ -1,5 +1,7 @@
 """Generate random birefringence profiles using the wave‑plate model."""
 
+from __future__ import annotations
+
 import numpy as np
 
 def extract_pmd_vector(

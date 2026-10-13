@@ -3,6 +3,8 @@ Functions for generating digital communication signals and
 general signal processing routines (FFT, cross‑correlation, peak fitting).
 """
 
+from __future__ import annotations
+
 import numpy as np
 from scipy.signal import upfirdn
 
